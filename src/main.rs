@@ -2,11 +2,14 @@ use std::fmt::Debug;
 
 use clap::{Command, Arg};
 
-mod rc_m31;
+mod rc_m31_m31_keccak;
+mod rc_babybear_babybear_poseidon2_ver1;
 
 fn main() -> Result<(), Box<dyn Debug>> {
     use p3_mersenne_31::Mersenne31;
-    use crate::rc_m31 as rc_m31;
+    use p3_baby_bear::BabyBear;
+    use crate::rc_m31_m31_keccak as rc_m31;
+    use crate::rc_babybear_babybear_poseidon2_ver1 as rc_babybear_v1;
 
     let matches = Command::new("Range Check")
         .arg(
@@ -15,7 +18,7 @@ fn main() -> Result<(), Box<dyn Debug>> {
                 .long("function")
                 .value_name("FUNCTION")
                 .help("Range check function to use")
-                .value_parser(["mersenne31"])
+                .value_parser(["mersenne31", "babybear_v1", "babybear_v2", "goldilocks"])
                 .required(true),
         )
         .arg(
@@ -43,6 +46,13 @@ fn main() -> Result<(), Box<dyn Debug>> {
             }
             let value = value as u32;
             rc_m31::prove_and_verify::<Mersenne31>(value);
+        }
+        "babybear_v1" => {
+            if value > u64::from(u32::MAX) {
+                panic!("Input value is not u32");
+            }
+            let value = value as u32;
+            rc_babybear_v1::prove_and_verify::<BabyBear>(value);
         }
         _ => unreachable!(),
     }
