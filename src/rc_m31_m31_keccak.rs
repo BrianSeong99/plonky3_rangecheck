@@ -24,7 +24,9 @@ pub struct Mersenne31RangeCheckAir {
     pub value: u32,
 }
 
-// Mersenne31 Modulus in big endian format  01111111 11111111 11111111 11111111 (2^31 - 1)
+// Mersenne31 Modulus in big endian format
+// 01111111 11111111 11111111 11111111
+// 2^31 - 1
 impl<F: Field> BaseAir<F> for Mersenne31RangeCheckAir {
     fn width(&self) -> usize {
         32 // 1 number per row

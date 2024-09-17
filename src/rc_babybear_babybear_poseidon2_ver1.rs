@@ -24,7 +24,8 @@ pub struct BabyBearRangeCheckAir {
     pub value: u32,
 }
 
-// Baby Bear Modulus in big endian format 01111000 00000000 00000000 00000001
+// Baby Bear Modulus in big endian format
+// 01111000 00000000 00000000 00000001
 impl<F: Field> BaseAir<F> for BabyBearRangeCheckAir {
     fn width(&self) -> usize {
         32
@@ -49,22 +50,21 @@ impl<AB: AirBuilder> Air<AB> for BabyBearRangeCheckAir {
 
         // Value to check if the 2nd to 5th bits are all one
         let upper_bits_product = current_row[1..5].iter().map(|&bit| bit.into()).product::<AB::Expr>();
-        let bottom_bits_sum = current_row[5..8].iter().map(|&bit| bit.into()).sum::<AB::Expr>();
-        let remaining_bits_sum = current_row[8..32].iter().map(|&bit | bit.into()).sum::<AB::Expr>();
+        let remaining_bits_sum = current_row[5..32].iter().map(|&bit | bit.into()).sum::<AB::Expr>();
         
-        builder.when(upper_bits_product.clone()).assert_zero(bottom_bits_sum);
         builder.when(upper_bits_product.clone()).assert_zero(remaining_bits_sum);
 
         let mut reconstructed_value = AB::Expr::zero();
         for i in 0..32 {
             let bit = current_row[i];
             builder.assert_bool(bit); // Making sure every bit is either 0 or 1
-            reconstructed_value += AB::Expr::from_wrapped_u32(1 << (31-i)) * bit; // using `from_wrapped_u32` to make sure the value is in range of 31 bits.
+            reconstructed_value += AB::Expr::from_wrapped_u32(1 << (31-i)) * bit; // using `from_wrapped_u32` to make sure the value is in range of 32 bits.
         }
 
         // Assert if the reconstructed value matches the original value
         builder.when_first_row().assert_eq(AB::Expr::from_wrapped_u32(self.value), reconstructed_value);
-    }}
+    }
+}
 
 pub fn generate_trace<F: Field>(value: u32) -> RowMajorMatrix<F> {
     let mut bits = Vec::with_capacity(32); // 32 bits per row
