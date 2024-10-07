@@ -3,17 +3,16 @@ use p3_field::{AbstractField, Field};
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
 
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-use p3_challenger::DuplexChallenger;
+use p3_baby_bear::BabyBear;
+use p3_challenger::{HashChallenger, SerializingChallenger32};
 use p3_commit::ExtensionMmcs;
-use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
-use p3_merkle_tree::FieldMerkleTreeMmcs;
 use p3_fri::{FriConfig, TwoAdicFriPcs};
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
+use p3_keccak::Keccak256Hash;
+use p3_merkle_tree::MerkleTreeMmcs;
+use p3_monty_31::dft::RecursiveDft;
+use p3_symmetric::{CompressionFunctionFromHasher, SerializingHasher32};
 use p3_uni_stark::{prove, verify, StarkConfig};
-use rand::thread_rng;
 use tracing_forest::util::LevelFilter;
 use tracing_forest::ForestLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -92,35 +91,24 @@ pub fn prove_and_verify<F: Field>(value: u32) {
     type Val = BabyBear;
     type Challenge = BinomialExtensionField<Val, 4>;
 
-    type Perm = Poseidon2<Val, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7>;
-    let perm = Perm::new_from_rng_128(
-        Poseidon2ExternalMatrixGeneral,
-        DiffusionMatrixBabyBear::default(),
-        &mut thread_rng(),
-    );
+    type ByteHash = Keccak256Hash;
+    type FieldHash = SerializingHasher32<ByteHash>;
+    let byte_hash = ByteHash {};
+    let field_hash = FieldHash::new(Keccak256Hash {});
 
-    type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
-    let hash = MyHash::new(perm.clone());
+    type MyCompress = CompressionFunctionFromHasher<ByteHash, 2, 32>;
+    let compress = MyCompress::new(byte_hash);
 
-    type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
-    let compress = MyCompress::new(perm.clone());
-
-    type ValMmcs = FieldMerkleTreeMmcs<
-        <Val as Field>::Packing,
-        <Val as Field>::Packing,
-        MyHash,
-        MyCompress,
-        8,
-    >;
-    let val_mmcs = ValMmcs::new(hash, compress);
+    type ValMmcs = MerkleTreeMmcs<Val, u8, FieldHash, MyCompress, 32>;
+    let val_mmcs = ValMmcs::new(field_hash, compress);
 
     type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
     let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-    type Dft = Radix2DitParallel;
-    let dft = Dft {};
+    type Challenger = SerializingChallenger32<Val, HashChallenger<u8, ByteHash, 32>>;
 
-    type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
+    let air = BabyBearRangeCheckAir { value };
+    let trace = generate_trace::<Val>( value);
 
     let fri_config = FriConfig {
         log_blowup: 2,
@@ -128,18 +116,18 @@ pub fn prove_and_verify<F: Field>(value: u32) {
         proof_of_work_bits: 16,
         mmcs: challenge_mmcs,
     };
+    type Dft = RecursiveDft<Val>;
+    let dft = Dft::new(trace.height() << fri_config.log_blowup);
+
     type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
     let pcs = Pcs::new(dft, val_mmcs, fri_config);
 
     type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
     let config = MyConfig::new(pcs);
 
-    let air = BabyBearRangeCheckAir { value };
-    let trace = generate_trace::<Val>( value);
-
-    let mut challenger = Challenger::new(perm.clone());
+    let mut challenger = Challenger::from_hasher(vec![], byte_hash);
     let proof = prove(&config, &air, &mut challenger, trace, &vec![]);
 
-    let mut challenger = Challenger::new(perm);
+    let mut challenger = Challenger::from_hasher(vec![], byte_hash);
     let _ = verify(&config, &air, &mut challenger, &proof, &vec![]);
 }

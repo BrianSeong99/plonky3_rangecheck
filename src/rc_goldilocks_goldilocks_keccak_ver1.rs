@@ -9,8 +9,8 @@ use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
 use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_goldilocks::Goldilocks;
-use p3_merkle_tree::FieldMerkleTreeMmcs;
-use p3_sha256::Sha256;
+use p3_merkle_tree::MerkleTreeMmcs;
+use p3_keccak::Keccak256Hash;
 use p3_symmetric::{CompressionFunctionFromHasher, SerializingHasher64};
 use p3_uni_stark::{prove, verify, StarkConfig};
 use tracing_forest::util::LevelFilter;
@@ -64,8 +64,7 @@ impl<AB: AirBuilder> Air<AB> for GoldilocksRangeCheckAir {
 
 
 pub fn generate_trace<F: Field>(value: u64) -> RowMajorMatrix<F> {
-    let mut bits = Vec::with_capacity(64); // 64 bits per row
-    // Convert the value to binary, in big endian format
+    let mut bits = Vec::with_capacity(64);
     for i in (0..64).rev() {
         if (value & (1 << i)) != 0 {
             bits.push(F::one());
@@ -73,8 +72,12 @@ pub fn generate_trace<F: Field>(value: u64) -> RowMajorMatrix<F> {
             bits.push(F::zero());
         }
     }
-    println!("bits: {:?} {}", bits, bits.len());
-    RowMajorMatrix::new(bits, 64)
+    
+    // Pad the trace matrix to the next power of 2
+    let next_power_of_two = bits.len().next_power_of_two();
+    bits.resize(next_power_of_two, F::zero());
+    
+    RowMajorMatrix::new(bits, next_power_of_two)
 }
 
 pub fn prove_and_verify<F: Field>(value: u64) {
@@ -90,27 +93,27 @@ pub fn prove_and_verify<F: Field>(value: u64) {
     type Val = Goldilocks;
     type Challenge = BinomialExtensionField<Val, 2>;
 
-    type ByteHash = Sha256;
+    type ByteHash = Keccak256Hash;
     type FieldHash = SerializingHasher64<ByteHash>;
     let byte_hash = ByteHash {};
     let field_hash = FieldHash::new(byte_hash);
 
-    type MyCompress = CompressionFunctionFromHasher<u8, ByteHash, 2, 32>;
+    type MyCompress = CompressionFunctionFromHasher<ByteHash, 2, 32>;
     let compress = MyCompress::new(byte_hash);
 
-    type ValMmcs = FieldMerkleTreeMmcs<Val, u8, FieldHash, MyCompress, 32>;
+    type ValMmcs = MerkleTreeMmcs<Val, u8, FieldHash, MyCompress, 32>;
     let val_mmcs = ValMmcs::new(field_hash, compress);
 
     type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
     let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-    type Dft = Radix2DitParallel;
-    let dft = Dft {};
+    type Dft = Radix2DitParallel<Val>;
+    let dft = Dft::default();
 
     type Challenger = SerializingChallenger64<Val, HashChallenger<u8, ByteHash, 32>>;
 
     let fri_config = FriConfig {
-        log_blowup: 1,
+        log_blowup: 5,
         num_queries: 100,
         proof_of_work_bits: 16,
         mmcs: challenge_mmcs,
