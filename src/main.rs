@@ -4,6 +4,7 @@ use clap::{Command, Arg};
 
 mod rc_m31_m31_keccak;
 mod rc_babybear_babybear_keccak_ver1;
+mod rc_babybear_babybear_keccak_ver2;
 mod rc_goldilocks_goldilocks_keccak_ver1;
 
 fn main() -> Result<(), Box<dyn Debug>> {
@@ -12,6 +13,7 @@ fn main() -> Result<(), Box<dyn Debug>> {
     use p3_goldilocks::Goldilocks;
     use crate::rc_m31_m31_keccak as rc_m31;
     use crate::rc_babybear_babybear_keccak_ver1 as rc_babybear_v1;
+    use crate::rc_babybear_babybear_keccak_ver2 as rc_babybear_v2;
     use crate::rc_goldilocks_goldilocks_keccak_ver1 as rc_goldilocks_v1;
 
     let matches = Command::new("Range Check")
@@ -56,6 +58,13 @@ fn main() -> Result<(), Box<dyn Debug>> {
             }
             let value = value as u32;
             rc_babybear_v1::prove_and_verify::<BabyBear>(value);
+        }
+        "babybear_v2" => {
+            if value > u64::from(u32::MAX) {
+                panic!("Input value is not u32");
+            }
+            let value = value as u32;
+            rc_babybear_v2::prove_and_verify::<BabyBear>(value);
         }
         "goldilocks_v1" => {
             if value > u64::from(u64::MAX) {
