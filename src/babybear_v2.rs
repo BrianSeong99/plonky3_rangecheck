@@ -23,13 +23,13 @@ pub struct BabyBearRangeCheckBitDecompositionAir<T> {
     // The original value to check.
     pub value: u32,
 
-    // The product of the the bits 3 to 5 in `most_sig_byte_decomp`.
+    // The product of the the bits 3 to 4 in `most_sig_byte_decomp`.
     pub and_most_sig_byte_decomp_4_to_3: T,
 
-    // The product of the the bits 3 to 6 in `most_sig_byte_decomp`.
+    // The product of the the bits 2 to 4 in `most_sig_byte_decomp`.
     pub and_most_sig_byte_decomp_4_to_2: T,
 
-    // The product of the the bits 3 to 7 in `most_sig_byte_decomp`.
+    // The product of the the bits 1 to 4 in `most_sig_byte_decomp`.
     pub and_most_sig_byte_decomp_4_to_1: T,
 }
 

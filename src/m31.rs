@@ -19,6 +19,7 @@ use tracing_forest::ForestLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
+
 pub struct Mersenne31RangeCheckAir {
     pub value: u32,
 }
