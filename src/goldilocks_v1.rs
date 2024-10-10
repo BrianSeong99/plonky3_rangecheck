@@ -20,7 +20,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 pub struct GoldilocksRangeCheckAir {
-    pub value: u64,
+    pub value: u64, // define constraint input, value is assigned to check against the reconstructed value.
 }
 
 // Goldilocks Modulus in big endian format:
@@ -37,23 +37,21 @@ impl<AB: AirBuilder> Air<AB> for GoldilocksRangeCheckAir {
         let main = builder.main();
         let current_row = main.row_slice(0);
 
-        /*:
-        The following conditions are used to check that the number is in the range of Goldilocks:
-        1. Check if all bits from 1st to 32nd are all one, if true, then remaining bits must be zero
-        2. Otherwise they can be anything.
-        3. Reconstruct the number to compare with the original input.
-         */
-
         // Value to check if the 1st to 32nd bits are all one
         let upper_bits_product = current_row[0..32].iter().map(|&bit| bit.into()).product::<AB::Expr>();
+        // Value to check if the sum of the remaining bits is zero, only if `upper_bits_product` is 1.
         let remaining_bits_sum = current_row[32..64].iter().map(|&bit| bit.into()).sum::<AB::Expr>();
         
-        builder.when(upper_bits_product.clone()).assert_zero(remaining_bits_sum);
+        // Assert if the 1st to 32nd bits are all one, then `remaining_bits_sum` has to be zero.
+        builder.when(upper_bits_product.clone()).assert_zero(remaining_bits_sum.clone());
+        // builder.assert_zero(remaining_bits_sum);
 
+        // initializing the `reconstructed_value`
         let mut reconstructed_value = AB::Expr::zero();
         for i in 0..64 {
             let bit = current_row[i];
-            builder.assert_bool(bit); // Making sure every bit is either 0 or 1
+            // Making sure every bit is either 0 or 1
+            builder.assert_bool(bit);
             reconstructed_value += AB::Expr::from_wrapped_u64(1 << (63-i)) * bit; // using `from_wrapped_u64` to make sure the value is in range of 64 bits.
         }
 
@@ -61,7 +59,6 @@ impl<AB: AirBuilder> Air<AB> for GoldilocksRangeCheckAir {
         builder.when_first_row().assert_eq(AB::Expr::from_wrapped_u64(self.value), reconstructed_value);
     }
 }
-
 
 pub fn generate_trace<F: Field>(value: u64) -> RowMajorMatrix<F> {
     let mut bits = Vec::with_capacity(64);
@@ -73,11 +70,7 @@ pub fn generate_trace<F: Field>(value: u64) -> RowMajorMatrix<F> {
         }
     }
     
-    // Pad the trace matrix to the next power of 2
-    let next_power_of_two = bits.len().next_power_of_two();
-    bits.resize(next_power_of_two, F::zero());
-    
-    RowMajorMatrix::new(bits, next_power_of_two)
+    RowMajorMatrix::new(bits, 64)
 }
 
 pub fn prove_and_verify<F: Field>(value: u64) {
