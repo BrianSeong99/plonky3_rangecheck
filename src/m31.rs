@@ -54,7 +54,8 @@ impl<AB: AirBuilder> Air<AB> for Mersenne31RangeCheckAir {
         // Assert if the reconstructed value matches the original value
         builder.when_first_row().assert_eq(AB::Expr::from_wrapped_u32(self.value), reconstructed_value);
         builder.when_transition().assert_eq(next_row_rowsum, AB::Expr::zero());
-    }}
+    }
+}
 
 pub fn generate_mersenne31_trace<F: Field>(value: u32) -> RowMajorMatrix<F> {
     let mut bits = Vec::with_capacity(32 * 4); // 32 bits per row, 4 rows, CirclePCS requires 4 rows

@@ -20,7 +20,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 pub struct BabyBearRangeCheckAir {
-    pub value: u32,
+    pub value: u32, // define constraint input, value is assigned to check against the reconstructed value.
 }
 
 // Baby Bear Modulus in big endian format
@@ -36,27 +36,23 @@ impl<AB: AirBuilder> Air<AB> for BabyBearRangeCheckAir {
         let main = builder.main();
         let current_row = main.row_slice(0);
 
-        /*:
-        The following conditions are used to check that the number is in the range of babybear:
-        1. Check if the first bit is zero
-        2. Check if all bits from 2nd to 5th are all one, if true, then remaining bits must be zero
-        3. Otherwise they can be anything.
-        4. Reconstruct the number to compare with the original input.
-         */
-
         // Assert that the most significant bit is zero
         builder.assert_eq(current_row[0], AB::Expr::zero());
 
         // Value to check if the 2nd to 5th bits are all one
         let upper_bits_product = current_row[1..5].iter().map(|&bit| bit.into()).product::<AB::Expr>();
+        // Value to check if the sum of the remaining bits is zero, only if `upper_bits_product` is 1.
         let remaining_bits_sum = current_row[5..32].iter().map(|&bit | bit.into()).sum::<AB::Expr>();
         
+        // Assert if the 2nd to 5th bits are all one, then `remaining_bits_sum` has to be zero.
         builder.when(upper_bits_product.clone()).assert_zero(remaining_bits_sum);
 
+        // initializing the `reconstructed_value`
         let mut reconstructed_value = AB::Expr::zero();
         for i in 0..32 {
             let bit = current_row[i];
-            builder.assert_bool(bit); // Making sure every bit is either 0 or 1
+            // Making sure every bit is either 0 or 1
+            builder.assert_bool(bit); 
             reconstructed_value += AB::Expr::from_wrapped_u32(1 << (31-i)) * bit; // using `from_wrapped_u32` to make sure the value is in range of 32 bits.
         }
 
