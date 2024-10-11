@@ -124,5 +124,5 @@ pub fn prove_and_verify<F: Field>(value: u64) {
     let proof = prove(&config, &air, &mut challenger, trace, &vec![]);
 
     let mut challenger = Challenger::from_hasher(vec![], byte_hash);
-    let _ = verify(&config, &air, &mut challenger, &proof, &vec![]);
+    let _ = verify(&config, &air, &mut challenger, &proof, &vec![]).expect("verification failed");
 }

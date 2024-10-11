@@ -50,6 +50,20 @@ where
         let main = builder.main();
         let current_row = main.row_slice(0);
 
+        // Assert that the most significant bit is zero
+        builder.assert_eq(current_row[0], AB::Expr::zero());
+
+        // Value to check if the 2nd to 5th bits are all one
+        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3), current_row[4] * current_row[3]);
+        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3) * current_row[2]);
+        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2) * current_row[1]);
+
+        // Value to check if the sum of the remaining bits is zero, only if `and_most_sig_byte_decomp_4_to_1` is 1.
+        let remaining_bits_sum = current_row[5..32].iter().map(|&bit| bit.into()).sum::<AB::Expr>();
+
+        // Assert if the 2nd to 5th bits are all one, then `remaining_bits_sum` has to be zero.
+        builder.when(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1)).assert_zero(remaining_bits_sum);
+
         let mut reconstructed_value = AB::Expr::zero();
         for i in 0..32 {
             let bit = current_row[i];
@@ -59,27 +73,9 @@ where
 
         // Assert if the reconstructed value matches the original value
         builder.when_first_row().assert_eq(AB::Expr::from_wrapped_u32(self.value), reconstructed_value);
+    }
+}
 
-        /*:
-        The following conditions are used to check that the number is in the range of babybear:
-        1. Check if the first bit is zero
-        2. Check if all bits from 2nd to 5th are all one, if true, then remaining bits must be zero
-        3. Otherwise they can be anything.
-        4. Reconstruct the number to compare with the original input.
-         */
-
-        // Assert that the most significant bit is zero
-        builder.assert_eq(current_row[0], AB::Expr::zero());
-
-        // Value to check if the 2nd to 5th bits are all one
-        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3), current_row[4] * current_row[3]);
-        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3) * current_row[2]);
-        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2) * current_row[1]);
-
-        let remaining_bits_sum = current_row[5..32].iter().map(|&bit| bit.into()).sum::<AB::Expr>();
-
-        builder.when(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1)).assert_zero(remaining_bits_sum);
-    }}
 pub fn generate_trace_and_inputs<F: Field>(value: u32) -> (RowMajorMatrix<F>, F, F, F) {
     let mut bits = Vec::with_capacity(32); // 32 bits per row
     // Convert the value to binary, in big endian format
@@ -149,5 +145,5 @@ pub fn prove_and_verify<F: Field>(value: u32) {
     let proof = prove(&config, &air, &mut challenger, trace, &vec![]);
 
     let mut challenger = Challenger::from_hasher(vec![], byte_hash);
-    let _ = verify(&config, &air, &mut challenger, &proof, &vec![]);
+    let _ = verify(&config, &air, &mut challenger, &proof, &vec![]).expect("verification failed");
 }

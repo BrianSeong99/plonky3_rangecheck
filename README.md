@@ -303,7 +303,7 @@ Plonky3 Settings:
 
 |row\col|0 col|1 col|2 col|3 col|4 col|5 col|6 col|7 col|8 col|9 col|10 col|11 col|12 col|13 col|14 col|15 col|16 col|17 col|18 col|19 col|20 col|21 col|22 col|23 col|24 col|25 col|26 col|27 col|28 col|29 col|30 col|31 col|32 col|33 col|34 col|35 col|36 col|37 col|38 col|39 col|40 col|41 col|42 col|43 col|44 col|45 col|46 col|47 col|48 col|49 col|50 col|51 col|52 col|53 col|54 col|55 col|56 col|57 col|58 col|59 col|60 col|61 col|62 col|63 col|
 |-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
-|0 row|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|
+|0 row|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|
 
 We are using `0th` row as the row to store the number to be checked, in the above execution trace, its storing the number $2^{31}-2^{27} + 1$. It is stored in bit decomposition form, in big endian format.
 
@@ -412,5 +412,170 @@ BabyBear v2 introduces an optimized version with reduced Constraint Degree. We w
 
 The degree of a Constraint in zero-knowledge proofs refers to the highest degree of any polynomial constraint in the system. Lower degree constraints generally lead to faster proof generation and smaller proof sizes.
 
+> How is the level of degree calculated? 
+
+Degree is calculated by multiplying the number of columns used in the constraint. which means if your constraint is designed to have multiplications of columns, its best to have less multiplications as possible.
+
+> How does the degree affect the proof generation process?
+
+Lower degree constraints generally lead to faster proof generation and smaller proof sizes. This is because the prover and verifier need to perform fewer operations to verify the proof. 
+
+> ***Degree d leads to a blowup by a factor of next_power_of_two(d - 1)***
+
+In Plonky3, the degree of a constraint will directly impact the blowup factor of the proof. Ex. degree 3 results in a 2x blowup (the minimum), degree 5 results in 3x, degree 9 results in 4x. (Or something in between like degree 7 still results in 4x.).
+
+Let's do an example:
+- If we use the same column to multiply itself by 4 times, then the constraint will be degree 4, like `x * x * x * x`, results in 2x blowup.
+- If we use 5 columns to multiply one another, then its degree 5, `x * y * z * w * b`, results in 3x blowup.
+
+### BabyBear v1: A Degree-4 constraint
+
+In BabyBear v1, the circuit has a degree of 4 due to constraints like:
+
+```rust
+// Value to check if the 2nd to 5th bits are all one
+let upper_bits_product = current_row[1..5].iter().map(|&bit| bit.into()).product::<AB::Expr>();
+```
+
+where `col 1-4` are multiplied together to get `upper_bits_product`, which resulted it to have a blowup factor of `2`. This is where we want to optimize the most in v2.
+
 ### BabyBear v2: A Degree-2 Constraint
 
+In BabyBear v2, we introduce a new constraint that breaks down the degree-4 constraint into multiple degree-2 constraints, significantly improving proof generation efficiency.
+
+The constraints requirements remains the same as v1, what's different is in the implementation of the top bits check, instead of multiplying the bits from 1 to 4, here's the alternative:
+1. **The most significant bit is zero**: Guaranteeing the value is less than 2^31.
+2. **Check if bits from 2nd to 5th are one**:
+   1. **Check if the product of the bits 3 to 4 is one**: Provide external constraint input `A` that is the product of bits 3 and 4. reconstruct the product in constraints and compare the product with `A`, this step is to ensure A is correct.
+   2. **Check if the product of the bits 2 to 4 is one**: Provide external constraint input `B` that is the product of bits 2, 3, and 4. reconstruct the product in constraints, but instead of multiplying bits 2, 3, and 4, we multiply the input `A` and bit 2, and compare the product with `B`. This step was made possible because we've verified `A` is correct in the previous step, therefore we are able to keep the constraint as degree 2.
+   3. **Check if the product of the bits 1 to 4 is one**: Provide external constraint input `C` that is the product of bits 1, 2, 3, and 4. reconstruct the product in constraints, but instead of multiplying bits 1, 2, 3, and 4, we multiply the input `B` and bit 1, and compare the product with `C`, keeping the constraint as degree 2.
+   4. **Check if `C` is 1 or 0**: Last but not least, now that we have verified `C` is correct, if `C` is 1, then the remaining bits must be zero, if it is 0, then the remaining bits can be anything.
+3. **Check if the reamaining bits are zero**: If 2nd contraint is true, the has to be all zero, other wise it can be anything between 1 or zero.
+4. **Each bit is either 0 or 1**: Since we are using bit decomposition, we need to make sure every value in col 1 to col 31 is either 0 or 1.
+5. **The reconstructed value matches the input**: The reconstructed value from the bit decomposition should match the original value.
+
+In step 2, the external constraint input `A`, `B`, `C` are called **Intermediate Variables**. By introducing intermediate variables, we break down the degree-4 constraint into multiple degree-2 constraints, significantly improving proof generation efficiency. Below is the constraint implementation.
+
+```rust
+pub struct BabyBearRangeCheckBitDecompositionAir<T> {
+    // The original value to check.
+    pub value: u32,
+
+    // The product of the the bits 3 to 4 in `most_sig_byte_decomp`.
+    pub and_most_sig_byte_decomp_4_to_3: T,
+
+    // The product of the the bits 2 to 4 in `most_sig_byte_decomp`.
+    pub and_most_sig_byte_decomp_4_to_2: T,
+
+    // The product of the the bits 1 to 4 in `most_sig_byte_decomp`.
+    pub and_most_sig_byte_decomp_4_to_1: T,
+}
+
+// Baby Bear Modulus in big endian format
+// 01111000 00000000 00000000 00000001
+impl<F: Field> BaseAir<F> for BabyBearRangeCheckBitDecompositionAir<F> {
+    fn width(&self) -> usize {
+        32
+    }
+}
+
+
+impl<AB: AirBuilder> Air<AB> for BabyBearRangeCheckBitDecompositionAir<AB::F>
+where
+    AB::F: Field,
+{
+    fn eval(&self, builder: &mut AB) {
+        let main = builder.main();
+        let current_row = main.row_slice(0);
+
+        // Assert that the most significant bit is zero
+        builder.assert_eq(current_row[0], AB::Expr::zero());
+
+        // Value to check if the 2nd to 5th bits are all one
+        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3), current_row[4] * current_row[3]);
+        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3) * current_row[2]);
+        builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2) * current_row[1]);
+
+        // Value to check if the sum of the remaining bits is zero, only if `and_most_sig_byte_decomp_4_to_1` is 1.
+        let remaining_bits_sum = current_row[5..32].iter().map(|&bit| bit.into()).sum::<AB::Expr>();
+
+        // Assert if the 2nd to 5th bits are all one, then `remaining_bits_sum` has to be zero.
+        builder.when(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1)).assert_zero(remaining_bits_sum);
+
+        let mut reconstructed_value = AB::Expr::zero();
+        for i in 0..32 {
+            let bit = current_row[i];
+            builder.assert_bool(bit); // Making sure every bit is either 0 or 1
+            reconstructed_value += AB::Expr::from_wrapped_u32(1 << (31-i)) * bit; // using `from_wrapped_u32` to make sure the value is in range of 32 bits.
+        }
+
+        // Assert if the reconstructed value matches the original value
+        builder.when_first_row().assert_eq(AB::Expr::from_wrapped_u32(self.value), reconstructed_value);
+    }
+}
+```
+
+There isn't much difference between the execution trace and BabyBear v1, the only difference is the we have to pre-compute the intermediate variables to feed into the constraint.
+
+```rust
+pub fn generate_trace_and_inputs<F: Field>(value: u32) -> (RowMajorMatrix<F>, F, F, F) {
+    let mut bits = Vec::with_capacity(32); // 32 bits per row
+    // Convert the value to binary, in big endian format
+    for i in (0..32).rev() {
+        if (value & (1 << i)) != 0 {
+            bits.push(F::one());
+        } else {
+            bits.push(F::zero());
+        }
+    }
+    let bits_clone = bits.clone();
+    (
+        RowMajorMatrix::new(bits, 32), 
+        bits_clone[4] * bits_clone[3], 
+        bits_clone[4] * bits_clone[3] * bits_clone[2], 
+        bits_clone[4] * bits_clone[3] * bits_clone[2] * bits_clone[1]
+    )
+}
+```
+
+### Proof & Verify
+
+The Plonky3 Prover & Verifier config can be found in `babybear_v2.rs` file. This time, because our constraint is only degree 2, we are able to downscale `fri_config`'s `log_blowup` to `1`!
+
+```rust
+pub fn prove_and_verify<F: Field>(value: u32) {
+    ...
+    // Generate the execution trace and intermediate variables
+    let (trace, and_most_sig_byte_decomp_4_to_3, and_most_sig_byte_decomp_4_to_2, and_most_sig_byte_decomp_4_to_1) = generate_trace_and_inputs::<Val>(value);
+    // Create the AIR instance
+    let air = BabyBearRangeCheckBitDecompositionAir { value, and_most_sig_byte_decomp_4_to_3, and_most_sig_byte_decomp_4_to_2, and_most_sig_byte_decomp_4_to_1 };
+    ...
+    let fri_config = FriConfig {
+        log_blowup: 1,
+        num_queries: 100,
+        proof_of_work_bits: 16,
+        mmcs: challenge_mmcs,
+    };
+    ...
+}
+```
+
+### Tested with following inputs using `release` version:
+
+|Input|Proving Time v1|Proving Time v2|Verification Time v1|Verification Time v2|
+|-|-|-|-|-|
+|0|35.3ms|7.42ms|3.7ms|2.01ms|
+|100|28.7ms|23.9ms|3.94ms|3.44ms|
+|2048|50.2ms|31.1ms|3.06ms|3.12ms|
+|2013265920|51.4ms|7.03ms|3.14ms|4.69ms|
+|2013265921|20.4ms|4.95ms|Failed|Failed|
+
+As we can see, the degree 2 constraint is much more efficient than the degree 4 constraint, especially when the input is large, because that's when the significant bits are playing its role in the constraints, and that's where we optimized in v2.
+
+The last row's verification failed because `2013265921` is out of range.
+
+## Conclusion
+
+Range checks are essential components in zero-knowledge proof systems, enabling privacy-preserving comparisons and validations. Through our exploration of different implementations in Plonky3, we've seen how various approaches can be used to achieve the same goal, each with its own trade-offs in terms of simplicity, efficiency, and degree.
+
+The progression from Mersenne31 to optimized BabyBear demonstrates the ongoing optimization efforts in the field of zero-knowledge proofs. By understanding these implementations and the concept of Constraint Degree, developers can make informed decisions when designing their own zero-knowledge proof systems using Plonky3.
