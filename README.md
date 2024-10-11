@@ -13,6 +13,46 @@
 
 > If you are just getting started with Plonky3, I recommend you to read [this](https://github.com/BrianSeong99/plonky3_fibonacci).
 
+## Table of Contents
+- [Range Check Implementations in Plonky3](#range-check-implementations-in-plonky3)
+  - [Table of Contents](#table-of-contents)
+  - [Introduction to Range Checks in Zero Knowledge Proofs](#introduction-to-range-checks-in-zero-knowledge-proofs)
+  - [Plonky3 Range Check Implementations](#plonky3-range-check-implementations)
+  - [Mersenne31 (m31) Range Check](#mersenne31-m31-range-check)
+    - [Overview](#overview)
+    - [Execution Trace](#execution-trace)
+    - [Constraints](#constraints)
+    - [Proof \& Verify](#proof--verify)
+      - [Test the range with number 100: (inside the range)](#test-the-range-with-number-100-inside-the-range)
+      - [Test the range with number $2^{31}-1$: (MAX number of the range)](#test-the-range-with-number-231-1-max-number-of-the-range)
+      - [Test the range with number $2^{32}-1$: (Over the range)](#test-the-range-with-number-232-1-over-the-range)
+  - [BabyBear Range Check (v1): A Basic Implementation](#babybear-range-check-v1-a-basic-implementation)
+    - [Overview](#overview-1)
+    - [Execution Trace](#execution-trace-1)
+    - [Constraints](#constraints-1)
+    - [Proof \& Verify](#proof--verify-1)
+      - [Test the range with number 100: (inside the range)](#test-the-range-with-number-100-inside-the-range-1)
+      - [Test the range with number $2^{31}-2^{27}$: (MAX number of the range)](#test-the-range-with-number-231-227-max-number-of-the-range)
+      - [Test the range with number $2^{31}-2^{27}+1$: (Over the range)](#test-the-range-with-number-231-2271-over-the-range)
+  - [Goldilocks v1 Range Check](#goldilocks-v1-range-check)
+    - [Overview](#overview-2)
+    - [Execution Trace](#execution-trace-2)
+    - [Constraints](#constraints-2)
+    - [Proof \& Verify](#proof--verify-2)
+      - [Test the range with number 100: (inside the range)](#test-the-range-with-number-100-inside-the-range-2)
+      - [Test the range with number $2^{64}-2^{32}$: (MAX number of the range)](#test-the-range-with-number-264-232-max-number-of-the-range)
+      - [Test the range with number $2^{64}-2^{32}+1$: (Over the range)](#test-the-range-with-number-264-2321-over-the-range)
+  - [BabyBear v2 Range Check \& Constraint Degree Comparison](#babybear-v2-range-check--constraint-degree-comparison)
+    - [Overview](#overview-3)
+    - [Constraint Degree](#constraint-degree)
+    - [BabyBear v1: A Degree-4 constraint](#babybear-v1-a-degree-4-constraint)
+    - [BabyBear v2: A Degree-2 Constraint](#babybear-v2-a-degree-2-constraint)
+    - [Proof \& Verify](#proof--verify-3)
+      - [Tested with following inputs using `release` version:](#tested-with-following-inputs-using-release-version)
+  - [Conclusion](#conclusion)
+  - [Goldilocks v2 Range Check?](#goldilocks-v2-range-check)
+
+
 ## Introduction to Range Checks in Zero Knowledge Proofs
 
 Range checks are fundamental operations in zero-knowledge proof systems. They allow us to prove that a value lies within a specific range without revealing the actual value. This is crucial for many applications, including:
@@ -29,10 +69,10 @@ In the context of zero-knowledge proofs, a range check typically involves provin
 ## Plonky3 Range Check Implementations
 If you are building any of the above systems on top of Plonky3, there are several ways to build range check constraints for different range and have it optimized. In this tutorial, I have created 4 examples, where each tailored to different finite fields and optimization levels. We'll explore four implementations, progressing from simple to more complex:
 
-- Mersenne31 (m31) - The simplest implementation
+- Mersenne31 (m31) - The simplest implementation of the series, implementation for Mersenne31 field range check
 - BabyBear v1 - A basic implementation for the BabyBear field
 - Goldilocks v1 - Range check for the Goldilocks field
-- BabyBear v2 - An optimized version of BabyBear (inspired by [SP1](https://github.com/succinctlabs/sp1/blob/dev/crates/core/machine/src/operations/baby_bear_range.rs) from Succinct Labs)
+- BabyBear v2 - An optimized version of BabyBear field
 
 > These examples were ran on M2 Pro Max MacBook Pro with 16GB of RAM.
 
@@ -408,6 +448,8 @@ cargo run -- --function goldilocks_v1 --value 18446744069414584321
 ### Overview
 BabyBear v2 introduces an optimized version with reduced Constraint Degree. We will explore that is Constraint Degree and what are the design thinking of building your own constraints in Plonky3.
 
+Disclaimer: This implementation is inspired by SP1 from Succinct Labs, check out the original BabyBear Range Check [here](https://github.com/succinctlabs/sp1/blob/dev/crates/core/machine/src/operations/baby_bear_range.rs).
+
 ### Constraint Degree
 
 The degree of a Constraint in zero-knowledge proofs refers to the highest degree of any polynomial constraint in the system. Lower degree constraints generally lead to faster proof generation and smaller proof sizes.
@@ -560,7 +602,7 @@ pub fn prove_and_verify<F: Field>(value: u32) {
 }
 ```
 
-### Tested with following inputs using `release` version:
+#### Tested with following inputs using `release` version:
 
 |Input|Proving Time v1|Proving Time v2|Verification Time v1|Verification Time v2|
 |-|-|-|-|-|
@@ -579,3 +621,7 @@ The last row's verification failed because `2013265921` is out of range.
 Range checks are essential components in zero-knowledge proof systems, enabling privacy-preserving comparisons and validations. Through our exploration of different implementations in Plonky3, we've seen how various approaches can be used to achieve the same goal, each with its own trade-offs in terms of simplicity, efficiency, and degree.
 
 The progression from Mersenne31 to optimized BabyBear demonstrates the ongoing optimization efforts in the field of zero-knowledge proofs. By understanding these implementations and the concept of Constraint Degree, developers can make informed decisions when designing their own zero-knowledge proof systems using Plonky3.
+
+## Goldilocks v2 Range Check?
+
+A little assignment for folks to try to implement a optimized version of Goldilocks field Range Check, feel free to submit PR!
