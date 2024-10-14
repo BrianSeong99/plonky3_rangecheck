@@ -42,7 +42,7 @@ impl<AB: AirBuilder> Air<AB> for GoldilocksRangeCheckAir {
         // Value to check if the sum of the remaining bits is zero, only if `upper_bits_product` is 1.
         let remaining_bits_sum = current_row[32..64].iter().map(|&bit| bit.into()).sum::<AB::Expr>();
         
-        // Assert if the 1st to 32nd bits are all one, then `remaining_bits_sum` has to be zero.
+        // Assert if the 0th to 31st bits are all one, then `remaining_bits_sum` has to be zero.
         builder.when(upper_bits_product.clone()).assert_zero(remaining_bits_sum.clone());
         // builder.assert_zero(remaining_bits_sum);
 

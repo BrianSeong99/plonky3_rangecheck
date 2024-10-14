@@ -53,7 +53,7 @@ where
         // Assert that the most significant bit is zero
         builder.assert_eq(current_row[0], AB::Expr::zero());
 
-        // Value to check if the 2nd to 5th bits are all one
+        // Value to check if the 1st to 4th bits are all one
         builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3), current_row[4] * current_row[3]);
         builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3) * current_row[2]);
         builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2) * current_row[1]);

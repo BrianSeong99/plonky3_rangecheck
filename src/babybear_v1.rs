@@ -39,12 +39,12 @@ impl<AB: AirBuilder> Air<AB> for BabyBearRangeCheckAir {
         // Assert that the most significant bit is zero
         builder.assert_eq(current_row[0], AB::Expr::zero());
 
-        // Value to check if the 2nd to 5th bits are all one
+        // Value to check if the 1st to 4th bits are all one
         let upper_bits_product = current_row[1..5].iter().map(|&bit| bit.into()).product::<AB::Expr>();
         // Value to check if the sum of the remaining bits is zero, only if `upper_bits_product` is 1.
         let remaining_bits_sum = current_row[5..32].iter().map(|&bit | bit.into()).sum::<AB::Expr>();
         
-        // Assert if the 2nd to 5th bits are all one, then `remaining_bits_sum` has to be zero.
+        // Assert if the 1st to 4th bits are all one, then `remaining_bits_sum` has to be zero.
         builder.when(upper_bits_product.clone()).assert_zero(remaining_bits_sum);
 
         // initializing the `reconstructed_value`

@@ -244,7 +244,7 @@ pub fn generate_trace<F: Field>(value: u32) -> RowMajorMatrix<F> {
 
 For constraints in range checks in BabyBear, there are several conditions to satisfy:
 1. **The most significant bit is zero**: Guaranteeing the value is less than 2^31.
-2. **Check if bits from 2nd to 5th are one**: If its true, then remaining bits must be zero.
+2. **Check if bits from 1st to 4th are one**: If its true, then remaining bits must be zero.
 3. **Check if the reamaining bits are zero**: If 2nd contraint is true, the has to be all zero, other wise it can be anything between 1 or zero.
 4. **Each bit is either 0 or 1**: Since we are using bit decomposition, we need to make sure every value in col 1 to col 31 is either 0 or 1.
 5. **The reconstructed value matches the input**: The reconstructed value from the bit decomposition should match the original value.
@@ -270,12 +270,12 @@ impl<AB: AirBuilder> Air<AB> for BabyBearRangeCheckAir {
         // Assert that the most significant bit is zero
         builder.assert_eq(current_row[0], AB::Expr::zero());
 
-        // Value to check if the 2nd to 5th bits are all one
+        // Value to check if the 1st to 4th bits are all one
         let upper_bits_product = current_row[1..5].iter().map(|&bit| bit.into()).product::<AB::Expr>();
         // Value to check if the sum of the remaining bits is zero, only if `upper_bits_product` is 1.
         let remaining_bits_sum = current_row[5..32].iter().map(|&bit | bit.into()).sum::<AB::Expr>();
         
-        // Assert if the 2nd to 5th bits are all one, then `remaining_bits_sum` has to be zero.
+        // Assert if the 1st to 4th bits are all one, then `remaining_bits_sum` has to be zero.
         builder.when(upper_bits_product.clone()).assert_zero(remaining_bits_sum);
 
         // initializing the `reconstructed_value`
@@ -475,7 +475,7 @@ Let's do an example:
 In BabyBear v1, the circuit has a degree of 4 due to constraints like:
 
 ```rust
-// Value to check if the 2nd to 5th bits are all one
+// Value to check if the 1st to 4th bits are all one
 let upper_bits_product = current_row[1..5].iter().map(|&bit| bit.into()).product::<AB::Expr>();
 ```
 
@@ -487,7 +487,7 @@ In BabyBear v2, we introduce a new constraint that breaks down the degree-4 cons
 
 The constraints requirements remains the same as v1, what's different is in the implementation of the top bits check, instead of multiplying the bits from 1 to 4, here's the alternative:
 1. **The most significant bit is zero**: Guaranteeing the value is less than 2^31.
-2. **Check if bits from 2nd to 5th are one**:
+2. **Check if bits from 1st to 4th are one**:
    1. **Check if the product of the bits 3 to 4 is one**: Provide external constraint input `A` that is the product of bits 3 and 4. reconstruct the product in constraints and compare the product with `A`, this step is to ensure A is correct.
    2. **Check if the product of the bits 2 to 4 is one**: Provide external constraint input `B` that is the product of bits 2, 3, and 4. reconstruct the product in constraints, but instead of multiplying bits 2, 3, and 4, we multiply the input `A` and bit 2, and compare the product with `B`. This step was made possible because we've verified `A` is correct in the previous step, therefore we are able to keep the constraint as degree 2.
    3. **Check if the product of the bits 1 to 4 is one**: Provide external constraint input `C` that is the product of bits 1, 2, 3, and 4. reconstruct the product in constraints, but instead of multiplying bits 1, 2, 3, and 4, we multiply the input `B` and bit 1, and compare the product with `C`, keeping the constraint as degree 2.
@@ -533,7 +533,7 @@ where
         // Assert that the most significant bit is zero
         builder.assert_eq(current_row[0], AB::Expr::zero());
 
-        // Value to check if the 2nd to 5th bits are all one
+        // Value to check if the 1st to 4th bits are all one
         builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3), current_row[4] * current_row[3]);
         builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_3) * current_row[2]);
         builder.assert_eq(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1), AB::Expr::from(self.and_most_sig_byte_decomp_4_to_2) * current_row[1]);
@@ -541,7 +541,7 @@ where
         // Value to check if the sum of the remaining bits is zero, only if `and_most_sig_byte_decomp_4_to_1` is 1.
         let remaining_bits_sum = current_row[5..32].iter().map(|&bit| bit.into()).sum::<AB::Expr>();
 
-        // Assert if the 2nd to 5th bits are all one, then `remaining_bits_sum` has to be zero.
+        // Assert if the 1st to 4th bits are all one, then `remaining_bits_sum` has to be zero.
         builder.when(AB::Expr::from(self.and_most_sig_byte_decomp_4_to_1)).assert_zero(remaining_bits_sum);
 
         let mut reconstructed_value = AB::Expr::zero();
